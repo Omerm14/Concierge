@@ -234,10 +234,16 @@ Layers 0–5 you can largely lift from the Cashflow playbook. **Layers 1b and 7 
 
 1. **Merge-gate autonomy → Stage 2 (Supervised) at launch.** Ideation + Prioritization run autonomously; **QA recommends, you one-click merge.** Graduate to Stage 3 (full auto-merge behind canary+rollback) only once the app has real users and QA has earned it. *Implication: build the deploy-safety net (Layer 1b) now anyway — it's what makes Stage 3 possible later, and staging+smoke tests help even at Stage 2.*
 2. **Repo/stack → one repo for this project. Stack chosen (override anytime):**
+   > **Superseded 2026-07-05:** the Backend/data and deploy rows below are
+   > superseded — see CLAUDE.md "Stack" section for the current picture (Neon +
+   > Drizzle + Auth.js + Vercel Blob, replacing Supabase; Vercel preview→prod +
+   > Neon per-PR branches wired). Rationale: Supabase's free-tier project cap (2
+   > projects) doesn't cover dev/staging/prod without stacking Pro pricing per
+   > environment. Original text retained below for historical context.
    - **Full-stack:** Next.js (TypeScript) on Vercel — API routes handle WhatsApp webhooks + server-side Anthropic calls, SSR helps couples find you via search/social.
-   - **Backend/data:** Supabase (Postgres + auth + storage + edge functions) — same as Cashflow, so Layer 1 is faster.
+   - **Backend/data:** ~~Supabase (Postgres + auth + storage + edge functions) — same as Cashflow, so Layer 1 is faster.~~
    - **AI:** Anthropic API (the concierge). **WhatsApp:** WhatsApp Business API (reuse Noga/Cashflow). **Payments (later, 🔒):** PayPlus/Cardcom.
-   - **Tests/CI/deploy:** Vitest (unit) + Playwright (e2e/smoke) · GitHub Actions · Vercel preview→prod · Supabase branch for staging DB.
+   - **Tests/CI/deploy:** Vitest (unit) + Playwright (e2e/smoke) · GitHub Actions · Vercel preview→prod · ~~Supabase branch for staging DB~~.
    - 1 product = 1 Linear team = 1 repo = 1 `CLAUDE.md`, per your rule.
 3. **`🔒` always-human boundary → confirmed:** payments/gifting · auth · DB migrations · anything touching guest PII · WhatsApp template changes. Everything else is fair game for the loop.
 4. **Ideation autonomy → full-scope tickets, on.** Ideation writes complete agent-ready tickets (not suggestions-only). This is safe because Prioritization + the constitution guard scope — that separation is doing the work your old scope gate did.

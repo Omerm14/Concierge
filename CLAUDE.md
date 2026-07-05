@@ -28,16 +28,25 @@ Any autonomous agent must stop immediately if the Linear issue labeled
 `FLYWHEEL.md` for the full protocol.
 
 ## Stack (locked)
-Per `docs/Autonomous-Dev-Flywheel.md` §10.2 — do not deviate without updating
-that doc first:
+Per `docs/Autonomous-Dev-Flywheel.md` §10.2 (see the superseding note there
+for the backend/data change) — do not deviate without updating that doc
+first:
 - **Full-stack:** Next.js (TypeScript, App Router) on Vercel
-- **Backend/data:** Supabase (Postgres + auth + storage + edge functions)
+- **Backend/data:** Neon (serverless Postgres, branch-per-environment) +
+  Drizzle ORM · Auth.js (NextAuth v5, JWT sessions, Google OAuth) · Vercel
+  Blob (file storage) — replaces Supabase (per-project pricing didn't fit a
+  dev/staging/prod setup)
 - **AI:** Anthropic API (future — the concierge)
 - **WhatsApp:** WhatsApp Business API (future)
 - **Payments:** PayPlus/Cardcom (future, always-human 🔒, see below)
+- **Observability:** Sentry (error tracking, wired now — free tier, near-zero
+  cost pre-launch)
+- **Rate-limiting:** Upstash Redis + `@upstash/ratelimit` — helper wired in
+  `lib/rate-limit.ts`, no live Upstash database yet (no routes need it yet)
 - **Tests/CI/deploy:** Vitest (unit) + Playwright (e2e/smoke) · GitHub Actions
-  · Vercel preview→prod · Supabase branch for staging DB (deploy pipeline not
-  wired yet, see CI/CD below)
+  (`ci.yml` incl. a `db-schema-check` job, `deploy.yml` for gated DB
+  migrations) · Vercel preview→prod · Neon branch per PR (via the Vercel
+  Marketplace Neon integration) + persistent `staging`/`dev` branches
 
 ## Repo conventions
 1 product = 1 Linear team = 1 repo = 1 `CLAUDE.md`.
@@ -47,7 +56,7 @@ that doc first:
 | `app/` | Next.js App Router pages/routes |
 | `lib/` | Shared logic, not UI |
 | `components/` | Shared React components |
-| `supabase/` | Supabase config + migrations |
+| `db/` | Drizzle schema (`schema.ts`) + generated migrations — zero product tables yet |
 | `tests/unit/` | Vitest unit tests |
 | `tests/e2e/` | Playwright e2e/smoke tests |
 | `docs/` | Strategy + process docs |
@@ -59,7 +68,12 @@ ticket needs them — no scaffolding ahead of scope.
 ## 🔒 Boundaries — never autonomous
 payments / gifting · authentication · DB migrations · anything touching guest
 PII · WhatsApp message-template changes. See `FLYWHEEL.md` for the full
-escalation protocol.
+escalation protocol. This is enforced structurally, not just documented: any
+🔒-flagged ticket is skipped by Ideation/Prioritization/Development/QA-CR at
+every stage and escalated to a human instead — the agents never touch DB
+migration work. `.github/workflows/deploy.yml`'s required-reviewer gate on
+the `production`/`staging` GitHub Environments is a second, independent
+safety net on top of that, not a replacement for it.
 
 ## Testing
 - `npm test` — Vitest unit tests (`tests/unit/`)
@@ -70,13 +84,20 @@ escalation protocol.
 
 ## CI/CD
 GitHub Actions (`.github/workflows/ci.yml`) runs `lint`, `typecheck`, `test`,
-`build` on every PR and on push to `main`. Playwright e2e is intentionally
-**not** in CI yet — it needs `playwright install --with-deps` plus a running
-app instance, more machinery than this stage needs. Add it once a real
-page/flow exists worth smoke-testing.
+`db-schema-check`, `build` on every PR and on push to `main`. The
+`db-schema-check` job runs `drizzle-kit generate` (no live DB needed — it
+only reads `db/schema.ts` + existing migrations) and fails if generated
+migrations weren't committed, catching schema drift. Playwright e2e is
+intentionally **not** in CI yet — it needs `playwright install --with-deps`
+plus a running app instance, more machinery than this stage needs. Add it
+once a real page/flow exists worth smoke-testing.
 
-The deploy pipeline (Vercel preview→prod, Supabase staging branch, canary,
-auto-rollback) is not wired yet — future work, see
+`.github/workflows/deploy.yml` runs DB migrations (`npm run db:migrate`) on
+push to `main`/`staging`, gated behind a required-reviewer approval on the
+matching GitHub Environment (`production`/`staging`) — both environments are
+gated, not just production (see 🔒 Boundaries above). Actual app deployment
+relies on Vercel's native GitHub integration (automatic once the repo is
+linked), not a custom Action. Canary/auto-rollback are still future work, see
 `docs/Autonomous-Dev-Flywheel.md` §4/§9 (Layer 1b).
 
 Branch protection on `main` must be configured manually — see
@@ -84,8 +105,15 @@ Branch protection on `main` must be configured manually — see
 
 ## Environment & secrets
 No real values are live yet. `.env.example` lists every var anticipated so
-far (Supabase, Anthropic, WhatsApp, PayPlus/Cardcom). Real values live in
-Vercel/Supabase dashboards, never committed.
+far, grouped by service: Neon (`DATABASE_URL`/`DATABASE_URL_UNPOOLED`),
+Auth.js (`AUTH_SECRET`/`AUTH_GOOGLE_ID`/`AUTH_GOOGLE_SECRET`), Vercel Blob
+(`BLOB_READ_WRITE_TOKEN`, auto-injected), Sentry, Upstash (unused until a
+route needs rate limiting), Anthropic, WhatsApp, PayPlus/Cardcom. Real values
+live in the Neon console, Vercel dashboard, Google Cloud Console, Sentry, and
+Upstash console — never committed. The one-time dashboard steps (creating the
+Neon project/branches, linking Vercel, the Google OAuth client, GitHub
+Environment reviewers, etc.) are a manual setup checklist handed to the repo
+owner separately — not tracked as a file in this repo.
 
 ## v0 scope (forward context only — not built yet)
 Per `docs/iPlan-Competitor-Strategy.md` §14: guest list (Excel + CSV import),
