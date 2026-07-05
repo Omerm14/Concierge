@@ -1,0 +1,29 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main, staging]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    # DB migrations are always-human per the 🔒 boundary in FLYWHEEL.md/CLAUDE.md.
+    # Both the `production` and `staging` GitHub Environments below must have a
+    # required reviewer configured (repo Settings → Environments) so this job
+    # pauses for a manual approval click before `db:migrate` actually runs —
+    # this is a second, independent safety net on top of normal PR review.
+    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run db:migrate
+        env:
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
