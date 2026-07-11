@@ -7,6 +7,30 @@ import type { Dietary, Guest, SeatingArrangement, Side } from "../guests/types";
  * response numbers are provably the same across every screen.
  */
 
+/**
+ * A guest that may have gone through the CON-9 RSVP reducer. `plusOnes` (when
+ * present) is the confirmed additional-attendee count; `plusOnesAllowed`
+ * (CON-2) is only the ceiling offered and must never be summed into a real
+ * headcount. Plain `Guest[]` (no `plusOnes`) is still valid input — confirmed
+ * plus-ones default to 0.
+ */
+type RosterGuest = Guest & { plusOnes?: number };
+
+function confirmedPlusOnes(guest: RosterGuest): number {
+  return guest.plusOnes ?? 0;
+}
+
+/**
+ * A plus-one has no dietary tag of its own (per-plus-one dietary capture is
+ * deferred — see CON-26). Its meal is only "trivially derivable" from the
+ * host guest when the host has exactly one dietary tag; a host with zero or
+ * multiple tags makes the plus-one's meal ambiguous, so it falls back to
+ * "none".
+ */
+function primaryDietaryTag(guest: Guest): Dietary | null {
+  return guest.dietary.length === 1 ? guest.dietary[0] : null;
+}
+
 export interface ResponseBreakdown {
   yes: number;
   no: number;
@@ -57,17 +81,17 @@ export function responseBreakdown(guests: Guest[]): ResponseBreakdown {
   return { ...counts, responseRate: total === 0 ? 0 : responded / total };
 }
 
-export function headcount(guests: Guest[]): Headcount {
+export function headcount(guests: RosterGuest[]): Headcount {
   const confirmed = guests.filter((guest) => guest.rsvpStatus === "yes");
   const minAttending = confirmed.length;
   const maxAttending =
     minAttending +
-    confirmed.reduce((sum, guest) => sum + guest.plusOnesAllowed, 0);
+    confirmed.reduce((sum, guest) => sum + confirmedPlusOnes(guest), 0);
 
   return { confirmedGuests: minAttending, minAttending, maxAttending };
 }
 
-export function dietaryTotals(guests: Guest[]): DietaryTotals {
+export function dietaryTotals(guests: RosterGuest[]): DietaryTotals {
   const counts = Object.fromEntries(
     DIETARY_VALUES.map((tag) => [tag, 0]),
   ) as Record<Dietary, number>;
@@ -80,12 +104,19 @@ export function dietaryTotals(guests: Guest[]): DietaryTotals {
     if (guest.allergyNote) {
       allergyNotes.push({ fullName: guest.fullName, allergyNote: guest.allergyNote });
     }
+
+    if (guest.rsvpStatus === "yes") {
+      const plusOnes = confirmedPlusOnes(guest);
+      if (plusOnes > 0) {
+        counts[primaryDietaryTag(guest) ?? "none"] += plusOnes;
+      }
+    }
   }
 
   return { counts, allergyNotes };
 }
 
-export function bySide(guests: Guest[]): Record<Side, GroupedStats> {
+export function bySide(guests: RosterGuest[]): Record<Side, GroupedStats> {
   const result = {} as Record<Side, GroupedStats>;
   for (const side of SIDES) {
     const subset = guests.filter((guest) => guest.side === side);
@@ -97,7 +128,7 @@ export function bySide(guests: Guest[]): Record<Side, GroupedStats> {
   return result;
 }
 
-export function byGroup(guests: Guest[]): Record<string, GroupedStats> {
+export function byGroup(guests: RosterGuest[]): Record<string, GroupedStats> {
   const groupNames = new Set<string>();
   for (const guest of guests) {
     for (const groupName of guest.groups) groupNames.add(groupName);
