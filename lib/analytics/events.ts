@@ -1,3 +1,6 @@
+import type { Language } from "@/lib/guests/types";
+import type { RsvpAnswer } from "@/lib/rsvp/types";
+
 /**
  * v0 funnel event taxonomy (constitution §14 item 6, §8.2).
  *
@@ -19,6 +22,11 @@ export interface EventPropsMap {
   venue_view_generated: Record<string, never>;
   viral_hook_shown: { source: string };
   viral_hook_clicked: { source: string };
+  rsvp_page_opened: { language: Language };
+  rsvp_started: Record<string, never>;
+  rsvp_submitted: { status: RsvpAnswer; plusOnes: number };
+  rsvp_language_switched: { language: Language };
+  auto_seat_run: { tableCount: number; unseatedCount: number };
 }
 
 export type EventName = keyof EventPropsMap;
