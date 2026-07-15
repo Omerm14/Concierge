@@ -6,6 +6,7 @@ import type {
   Side,
   Table,
 } from "../guests/types";
+import type { WeddingProfile } from "../wedding/types";
 
 /**
  * Canonical demo wedding — the single mock dataset for every v0 UI/aggregator
@@ -235,3 +236,20 @@ export const demoArrangement: SeatingArrangement = buildArrangement(
   demoGuests,
   demoTables
 );
+
+// The couple/event identity for the demo dataset above. Fixed ISO date, no
+// guest PII — only the couple's own display info (see lib/wedding/types.ts).
+export const demoWedding: WeddingProfile = {
+  coupleDisplayName: "נועה & איתי",
+  partnerAName: "נועה כהן",
+  partnerBName: "איתי לוי",
+  weddingDate: "2026-09-17",
+  venueName: "Gan HaShlosha Gardens",
+  venueCity: "Beit She'an",
+  defaultLanguage: "he",
+  brand: {
+    accentColor: "#B8895A",
+    logoText: "N&E",
+  },
+  hostContactNote: "Questions? Call Noa at 050-000-0000.",
+};
