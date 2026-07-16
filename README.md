@@ -16,5 +16,5 @@ npm run lint       # ESLint
 npm run typecheck  # tsc --noEmit
 npm test           # Vitest unit tests
 npm run test:e2e   # Playwright e2e/smoke tests (run `npm run test:e2e:install` once first)
-npm run build       # production build
+npm run build      # production build
 ```
