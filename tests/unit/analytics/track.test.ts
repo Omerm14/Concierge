@@ -32,4 +32,21 @@ describe("track()", () => {
   it("default sink is a no-op/console sink and does not throw", () => {
     expect(() => track("seating_opened", {})).not.toThrow();
   });
+
+  it("forwards the RSVP + auto-seat events with their closed prop shapes", () => {
+    const sink = vi.fn();
+    setAnalyticsSink(sink);
+
+    track("rsvp_page_opened", { language: "he" });
+    track("rsvp_started", {});
+    track("rsvp_submitted", { status: "yes", plusOnes: 2 });
+    track("rsvp_language_switched", { language: "en" });
+    track("auto_seat_run", { tableCount: 12, unseatedCount: 0 });
+
+    expect(sink).toHaveBeenNthCalledWith(1, "rsvp_page_opened", { language: "he" });
+    expect(sink).toHaveBeenNthCalledWith(2, "rsvp_started", {});
+    expect(sink).toHaveBeenNthCalledWith(3, "rsvp_submitted", { status: "yes", plusOnes: 2 });
+    expect(sink).toHaveBeenNthCalledWith(4, "rsvp_language_switched", { language: "en" });
+    expect(sink).toHaveBeenNthCalledWith(5, "auto_seat_run", { tableCount: 12, unseatedCount: 0 });
+  });
 });
