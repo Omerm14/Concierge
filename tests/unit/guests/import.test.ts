@@ -101,4 +101,13 @@ describe("importGuests", () => {
       ])
     );
   });
+
+  it("preserves an international phone number with no drop warning", async () => {
+    const csv = "Full Name,Phone\nAnglo Guest,+14155551234\n";
+    const { guests, warnings } = await importGuests(csv, "csv");
+
+    expect(guests).toHaveLength(1);
+    expect(guests[0]?.phone).toBe("+14155551234");
+    expect(warnings).toEqual([]);
+  });
 });
