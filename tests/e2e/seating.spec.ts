@@ -64,3 +64,28 @@ test("a guest with a dietary restriction shows a badge on their chip", async ({ 
 
   await expect(page.getByTestId("dietary-badge-guest-001-vegetarian")).toBeVisible();
 });
+
+test("Auto-seat proposes an arrangement, the couple can still drag, and Undo restores the prior state", async ({
+  page,
+}) => {
+  await page.goto("/seating");
+
+  const initialUnassignedText = await page.getByTestId("unassigned-count").textContent();
+  await expect(page.getByTestId("chip-guest-001")).toBeVisible();
+
+  await page.getByTestId("auto-seat-button").click();
+
+  await expect(page.getByTestId("auto-seat-review")).toBeVisible();
+  await expect(page.getByTestId("auto-seat-score")).toBeVisible();
+  const afterAutoSeatText = await page.getByTestId("unassigned-count").textContent();
+  expect(afterAutoSeatText).not.toBe(initialUnassignedText);
+
+  // Still draggable after Auto-seat: move guest-001 into the tray.
+  await dragChipTo(page, "chip-guest-001", "unassigned-tray");
+  await expect(page.getByTestId("unassigned-tray").getByTestId("chip-guest-001")).toBeVisible();
+
+  await page.getByTestId("auto-seat-undo").click();
+
+  await expect(page.getByTestId("auto-seat-review")).toHaveCount(0);
+  await expect(page.getByTestId("unassigned-count")).toHaveText(initialUnassignedText ?? "");
+});

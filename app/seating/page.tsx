@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { boardArrangement, boardGuests } from "@/lib/seating/mock-board";
+import { boardArrangement, boardConstraints, boardGuests } from "@/lib/seating/mock-board";
 import { SeatingBoard } from "@/components/seating/SeatingBoard";
 
 export const metadata: Metadata = {
@@ -18,7 +18,11 @@ export default function SeatingPage() {
           Drag a guest onto a table — works with touch on your phone.
         </p>
       </div>
-      <SeatingBoard guests={boardGuests} initialArrangement={boardArrangement} />
+      <SeatingBoard
+        guests={boardGuests}
+        initialArrangement={boardArrangement}
+        constraints={boardConstraints}
+      />
     </div>
   );
 }

@@ -2,24 +2,53 @@
 
 import { useState } from "react";
 import type { PointerEvent } from "react";
+import type { Constraint } from "@/lib/seating/constraints";
 import type { Guest, SeatingArrangement } from "@/lib/guests/types";
+import { track } from "@/lib/analytics/track";
 import { seatingReducer } from "@/lib/seating/reducer";
+import { proposeAutoSeat, undoAutoSeat, type AutoSeatProposal } from "@/lib/seating/autoSeatBoard";
+import { AutoSeatButton } from "./AutoSeatButton";
+import { AutoSeatReviewBanner } from "./AutoSeatReviewBanner";
 import { GuestChip } from "./GuestChip";
 import { TableCard } from "./TableCard";
 
 export function SeatingBoard({
   guests,
   initialArrangement,
+  constraints = [],
 }: {
   guests: Guest[];
   initialArrangement: SeatingArrangement;
+  constraints?: Constraint[];
 }) {
   const [arrangement, setArrangement] = useState(initialArrangement);
   const [draggingGuestId, setDraggingGuestId] = useState<string | null>(null);
   const [rejectedGuestName, setRejectedGuestName] = useState<string | null>(null);
+  const [proposal, setProposal] = useState<AutoSeatProposal | null>(null);
 
   const guestsById = new Map(guests.map((guest) => [guest.id, guest]));
   const unassignedGuests = guests.filter((guest) => !(guest.id in arrangement.assignments));
+
+  function handleAutoSeat() {
+    const next = proposeAutoSeat(guests, arrangement.tables, constraints, arrangement);
+    setArrangement(next.result.arrangement);
+    setProposal(next);
+    setRejectedGuestName(null);
+    track("auto_seat_run", {
+      tableCount: arrangement.tables.length,
+      unseatedCount: next.result.unseated.length,
+    });
+  }
+
+  function handleApprove() {
+    setProposal(null);
+  }
+
+  function handleUndo() {
+    if (!proposal) return;
+    setArrangement(undoAutoSeat(proposal));
+    setProposal(null);
+  }
 
   function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -56,9 +85,23 @@ export function SeatingBoard({
 
   return (
     <div className="flex flex-col gap-6">
+      <AutoSeatButton onAutoSeat={handleAutoSeat} />
+
+      {proposal && (
+        <AutoSeatReviewBanner
+          score={proposal.result.score}
+          unseatedCount={proposal.result.unseated.length}
+          onApprove={handleApprove}
+          onUndo={handleUndo}
+        />
+      )}
+
       <section data-tray="" data-testid="unassigned-tray" aria-labelledby="tray-heading">
         <h2 id="tray-heading" className="text-lg font-medium text-black dark:text-zinc-50">
-          Unassigned guests
+          Unassigned guests{" "}
+          <span data-testid="unassigned-count" className="text-sm font-normal text-zinc-500 dark:text-zinc-400">
+            ({unassignedGuests.length})
+          </span>
         </h2>
         <div className="mt-2 flex min-h-14 flex-wrap gap-2 rounded-xl border border-dashed border-zinc-300 p-3 dark:border-zinc-700">
           {unassignedGuests.map((guest) => (
