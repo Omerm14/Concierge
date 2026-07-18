@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { autoSeat } from "../../../lib/seating/autoseat";
 import { evaluateConstraints, type Constraint } from "../../../lib/seating/constraints";
+import { buildSeatCost } from "../../../lib/seating/occupancy";
 import type { Guest, Table } from "../../../lib/guests/types";
 
 function makeGuest(overrides: Partial<Guest> & { id: string }): Guest {
@@ -110,5 +111,40 @@ describe("autoSeat", () => {
     const seedOnly = autoSeat(guests, tables, constraints, { maxSwapIterations: 0 });
     const improved = autoSeat(guests, tables, constraints, { maxSwapIterations: 300 });
     expect(improved.score).toBeGreaterThanOrEqual(seedOnly.score);
+  });
+});
+
+describe("autoSeat with confirmed plus-ones (seat-cost)", () => {
+  it("never produces a table whose seat-cost sum exceeds capacity, even when half the guests bring a confirmed plus-one", () => {
+    const guestsWithPlusOnes = Array.from({ length: 12 }, (_, i) =>
+      i % 2 === 0
+        ? { ...makeGuest({ id: `g${i + 1}` }), plusOnes: 1 }
+        : makeGuest({ id: `g${i + 1}` }),
+    );
+    const smallTables: Table[] = [
+      { id: "t1", label: "Table 1", capacity: 4 },
+      { id: "t2", label: "Table 2", capacity: 4 },
+      { id: "t3", label: "Table 3", capacity: 4 },
+      { id: "t4", label: "Table 4", capacity: 4 },
+    ];
+
+    const result = autoSeat(guestsWithPlusOnes, smallTables, [{ type: "capacity" }]);
+    const seatCost = buildSeatCost(guestsWithPlusOnes);
+
+    const seatsByTable = new Map<string, number>();
+    for (const [guestId, tableId] of Object.entries(result.arrangement.assignments)) {
+      seatsByTable.set(tableId, (seatsByTable.get(tableId) ?? 0) + seatCost(guestId));
+    }
+    for (const table of smallTables) {
+      expect(seatsByTable.get(table.id) ?? 0).toBeLessThanOrEqual(table.capacity);
+    }
+
+    const evaluation = evaluateConstraints(
+      result.arrangement,
+      [{ type: "capacity" }],
+      guestsWithPlusOnes,
+      seatCost,
+    );
+    expect(evaluation.hardViolations).toBe(0);
   });
 });

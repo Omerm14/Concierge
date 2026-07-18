@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { evaluateConstraints } from "../../../lib/seating/constraints";
+import { buildSeatCost } from "../../../lib/seating/occupancy";
 import type { Guest, SeatingArrangement } from "../../../lib/guests/types";
 
 function makeGuest(overrides: Partial<Guest> & { id: string }): Guest {
@@ -94,6 +95,51 @@ describe("evaluateConstraints", () => {
     expect(capacityResult?.violatingGuestIds.sort()).toEqual(["g1", "g2"]);
     // capacity (hard) + must-sit-at (hard) violated, keep-together satisfied
     expect(result.hardViolations).toBe(2);
+  });
+
+  it("flags plus-one seat-cost overflow via seatCost even when the guest-id count is within capacity, and does not without it", () => {
+    const twoGuestsAtCapacityTwo: SeatingArrangement = {
+      tables: [{ id: "t1", label: "Table 1", capacity: 2 }],
+      assignments: { g1: "t1", g2: "t1" },
+    };
+
+    const guestsWithPlusOnes = [
+      { ...makeGuest({ id: "g1" }), plusOnes: 1 },
+      { ...makeGuest({ id: "g2" }), plusOnes: 1 },
+    ];
+    const overflow = evaluateConstraints(
+      twoGuestsAtCapacityTwo,
+      [{ type: "capacity" }],
+      guestsWithPlusOnes,
+      buildSeatCost(guestsWithPlusOnes),
+    );
+    const overflowResult = overflow.results.find((r) => r.constraint.type === "capacity");
+    expect(overflowResult?.satisfied).toBe(false);
+    expect(overflowResult?.violatingGuestIds.sort()).toEqual(["g1", "g2"]);
+
+    // Same 2 guest-ids at the same capacity-2 table, no seatCost supplied —
+    // the guest-id count (2) alone is within capacity, so it's satisfied.
+    const withoutSeatCost = evaluateConstraints(
+      twoGuestsAtCapacityTwo,
+      [{ type: "capacity" }],
+      guests,
+    );
+    const defaultResult = withoutSeatCost.results.find((r) => r.constraint.type === "capacity");
+    expect(defaultResult?.satisfied).toBe(true);
+
+    // The same guests with 0 confirmed plus-ones also fit under seatCost.
+    const guestsNoPlusOnes = [
+      { ...makeGuest({ id: "g1" }), plusOnes: 0 },
+      { ...makeGuest({ id: "g2" }), plusOnes: 0 },
+    ];
+    const fits = evaluateConstraints(
+      twoGuestsAtCapacityTwo,
+      [{ type: "capacity" }],
+      guestsNoPlusOnes,
+      buildSeatCost(guestsNoPlusOnes),
+    );
+    const fitsResult = fits.results.find((r) => r.constraint.type === "capacity");
+    expect(fitsResult?.satisfied).toBe(true);
   });
 
   it("detects a must-sit-at violation when the guest is at the wrong or no table", () => {

@@ -1,5 +1,6 @@
 import type { Guest, SeatingArrangement } from "../guests/types";
 import { evaluateConstraints, type Constraint } from "./constraints";
+import type { SeatCost } from "./occupancy";
 
 export interface ScoreWeights {
   seated: number;
@@ -16,13 +17,18 @@ export const DEFAULT_SCORE_WEIGHTS: ScoreWeights = {
 };
 
 /**
- * Variance of per-table occupancy fraction (seated / capacity). Lower is
- * more evenly filled; tables with zero capacity are ignored.
+ * Variance of per-table occupancy fraction (seats / capacity). Lower is
+ * more evenly filled; tables with zero capacity are ignored. `seatCost`
+ * (default 1 per guest) lets a confirmed plus-one count as extra seats.
  */
-function occupancyImbalance(arrangement: SeatingArrangement): number {
+function occupancyImbalance(
+  arrangement: SeatingArrangement,
+  seatCost?: SeatCost,
+): number {
   const seatedByTable = new Map<string, number>();
-  for (const tableId of Object.values(arrangement.assignments)) {
-    seatedByTable.set(tableId, (seatedByTable.get(tableId) ?? 0) + 1);
+  for (const [guestId, tableId] of Object.entries(arrangement.assignments)) {
+    const seats = seatCost ? seatCost(guestId) : 1;
+    seatedByTable.set(tableId, (seatedByTable.get(tableId) ?? 0) + seats);
   }
 
   const fractions = arrangement.tables
@@ -46,12 +52,14 @@ export function scoreArrangement(
   arrangement: SeatingArrangement,
   constraints: Constraint[],
   guests: Guest[],
+  seatCost?: SeatCost,
   weights: ScoreWeights = DEFAULT_SCORE_WEIGHTS,
 ): number {
   const { results, hardViolations } = evaluateConstraints(
     arrangement,
     constraints,
     guests,
+    seatCost,
   );
   const totalViolations = results.filter((result) => !result.satisfied).length;
   const softViolations = totalViolations - hardViolations;
@@ -61,6 +69,6 @@ export function scoreArrangement(
     seatedCount * weights.seated -
     hardViolations * weights.hardViolation -
     softViolations * weights.softViolation -
-    occupancyImbalance(arrangement) * weights.imbalance
+    occupancyImbalance(arrangement, seatCost) * weights.imbalance
   );
 }

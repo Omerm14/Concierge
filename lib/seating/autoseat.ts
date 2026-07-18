@@ -1,5 +1,6 @@
-import type { Guest, SeatingArrangement, Side, Table } from "../guests/types";
+import type { SeatingArrangement, Side, Table } from "../guests/types";
 import type { Constraint } from "./constraints";
+import { buildSeatCost, type RosterGuest, type SeatCost } from "./occupancy";
 import { scoreArrangement } from "./score";
 
 export interface AutoSeatOptions {
@@ -142,7 +143,7 @@ function violatesKeepApart(
 
 function majoritySide(
   guestIds: string[],
-  guestsById: Map<string, Guest>,
+  guestsById: Map<string, RosterGuest>,
 ): Side | undefined {
   const counts = new Map<Side, number>();
   for (const id of guestIds) {
@@ -178,30 +179,38 @@ function createSeatState(tables: Table[]): SeatState {
   };
 }
 
-function placeAt(state: SeatState, guestIds: string[], tableId: string): void {
+function placeAt(
+  state: SeatState,
+  guestIds: string[],
+  tableId: string,
+  seatCost: SeatCost,
+): void {
   for (const guestId of guestIds) {
     state.assignments[guestId] = tableId;
-    state.seatCounts.set(tableId, (state.seatCounts.get(tableId) ?? 0) + 1);
+    state.seatCounts.set(tableId, (state.seatCounts.get(tableId) ?? 0) + seatCost(guestId));
     state.seatMembers.get(tableId)?.push(guestId);
   }
 }
 
-/** Best eligible table for a candidate group: fits capacity, respects keep-apart,
- * prefers side cohesion, tie-broken toward the emptier table (even fill). */
+/** Best eligible table for a candidate group: fits capacity (by seat-cost),
+ * respects keep-apart, prefers side cohesion, tie-broken toward the emptier
+ * table (even fill). */
 function pickBestTable(
   candidateIds: string[],
   tables: Table[],
   state: SeatState,
   keepApart: Map<string, Set<string>>,
-  guestsById: Map<string, Guest>,
+  guestsById: Map<string, RosterGuest>,
+  seatCost: SeatCost,
 ): Table | undefined {
   const side = majoritySide(candidateIds, guestsById);
+  const candidateSeats = candidateIds.reduce((sum, id) => sum + seatCost(id), 0);
   let best: Table | undefined;
   let bestScore = -Infinity;
 
   for (const table of tables) {
     const used = state.seatCounts.get(table.id) ?? 0;
-    if (table.capacity - used < candidateIds.length) continue;
+    if (table.capacity - used < candidateSeats) continue;
     const members = state.seatMembers.get(table.id) ?? [];
     if (violatesKeepApart(candidateIds, members, keepApart)) continue;
 
@@ -220,10 +229,11 @@ function pickBestTable(
 }
 
 function greedySeed(
-  guests: Guest[],
+  guests: RosterGuest[],
   tables: Table[],
   constraints: Constraint[],
   rng: () => number,
+  seatCost: SeatCost,
 ): { state: SeatState; unseated: string[] } {
   const guestsById = new Map(guests.map((guest) => [guest.id, guest]));
   const keepApart = buildKeepApartMap(constraints);
@@ -240,10 +250,10 @@ function greedySeed(
     const table = tableById.get(constraint.tableId);
     if (!table) continue;
     const used = state.seatCounts.get(table.id) ?? 0;
-    if (used >= table.capacity) continue;
+    if (used + seatCost(constraint.guestId) > table.capacity) continue;
     const members = state.seatMembers.get(table.id) ?? [];
     if (violatesKeepApart([constraint.guestId], members, keepApart)) continue;
-    placeAt(state, [constraint.guestId], table.id);
+    placeAt(state, [constraint.guestId], table.id, seatCost);
     placed.add(constraint.guestId);
   }
 
@@ -252,15 +262,15 @@ function greedySeed(
   const clusters = orderClusters(buildClusters(remainingIds, constraints), rng);
 
   for (const cluster of clusters) {
-    const table = pickBestTable(cluster, tables, state, keepApart, guestsById);
+    const table = pickBestTable(cluster, tables, state, keepApart, guestsById, seatCost);
     if (table) {
-      placeAt(state, cluster, table.id);
+      placeAt(state, cluster, table.id, seatCost);
       continue;
     }
     // Cluster doesn't fit together (keep-together is soft) — place individually.
     for (const guestId of cluster) {
-      const single = pickBestTable([guestId], tables, state, keepApart, guestsById);
-      if (single) placeAt(state, [guestId], single.id);
+      const single = pickBestTable([guestId], tables, state, keepApart, guestsById, seatCost);
+      if (single) placeAt(state, [guestId], single.id, seatCost);
       else unseated.push(guestId);
     }
   }
@@ -296,24 +306,54 @@ function pickMove(
   return { kind: "seat", guestId, tableId };
 }
 
+function tableSeatSum(
+  assignments: Record<string, string>,
+  tableId: string,
+  seatCost: SeatCost,
+): number {
+  let sum = 0;
+  for (const [guestId, assignedTableId] of Object.entries(assignments)) {
+    if (assignedTableId === tableId) sum += seatCost(guestId);
+  }
+  return sum;
+}
+
+function exceedsCapacity(
+  tables: Table[],
+  assignments: Record<string, string>,
+  tableId: string,
+  seatCost: SeatCost,
+): boolean {
+  const table = tables.find((t) => t.id === tableId);
+  return table !== undefined && tableSeatSum(assignments, tableId, seatCost) > table.capacity;
+}
+
 function applyMove(
   arrangement: SeatingArrangement,
   unseated: string[],
   move: Move,
+  seatCost: SeatCost,
 ): { arrangement: SeatingArrangement; unseated: string[] } {
   const assignments = { ...arrangement.assignments };
 
   if (move.kind === "swap") {
     const tableA = assignments[move.guestA];
     const tableB = assignments[move.guestB];
-    assignments[move.guestA] = tableB;
-    assignments[move.guestB] = tableA;
-    return { arrangement: { tables: arrangement.tables, assignments }, unseated };
+    const nextAssignments = { ...assignments, [move.guestA]: tableB, [move.guestB]: tableA };
+    // Swapping guests with different seat-costs can push either table over
+    // capacity (a plain 1-for-1 guest swap never could) — reject if so.
+    if (
+      exceedsCapacity(arrangement.tables, nextAssignments, tableA, seatCost) ||
+      exceedsCapacity(arrangement.tables, nextAssignments, tableB, seatCost)
+    ) {
+      return { arrangement, unseated };
+    }
+    return { arrangement: { tables: arrangement.tables, assignments: nextAssignments }, unseated };
   }
 
   const table = arrangement.tables.find((t) => t.id === move.tableId);
-  const used = Object.values(assignments).filter((id) => id === move.tableId).length;
-  if (!table || used >= table.capacity) {
+  const used = tableSeatSum(assignments, move.tableId, seatCost);
+  if (!table || used + seatCost(move.guestId) > table.capacity) {
     return { arrangement, unseated };
   }
   assignments[move.guestId] = move.tableId;
@@ -333,20 +373,21 @@ function localSearch(
   arrangement: SeatingArrangement,
   unseated: string[],
   constraints: Constraint[],
-  guests: Guest[],
+  guests: RosterGuest[],
   rng: () => number,
   maxIterations: number,
+  seatCost: SeatCost,
 ): { arrangement: SeatingArrangement; unseated: string[]; score: number } {
   let current = arrangement;
   let currentUnseated = unseated;
-  let currentScore = scoreArrangement(current, constraints, guests);
+  let currentScore = scoreArrangement(current, constraints, guests, seatCost);
 
   for (let i = 0; i < maxIterations; i++) {
     const move = pickMove(current.assignments, currentUnseated, current.tables, rng);
     if (!move) break;
 
-    const next = applyMove(current, currentUnseated, move);
-    const nextScore = scoreArrangement(next.arrangement, constraints, guests);
+    const next = applyMove(current, currentUnseated, move, seatCost);
+    const nextScore = scoreArrangement(next.arrangement, constraints, guests, seatCost);
     if (nextScore >= currentScore) {
       current = next.arrangement;
       currentUnseated = next.unseated;
@@ -364,7 +405,7 @@ function localSearch(
  * it or exceeding table capacity.
  */
 export function autoSeat(
-  guests: Guest[],
+  guests: RosterGuest[],
   tables: Table[],
   constraints: Constraint[],
   opts: AutoSeatOptions = {},
@@ -372,11 +413,12 @@ export function autoSeat(
   const seed = opts.seed ?? DEFAULT_SEED;
   const maxSwapIterations = opts.maxSwapIterations ?? DEFAULT_MAX_SWAP_ITERATIONS;
   const rng = createRng(seed);
+  const seatCost = buildSeatCost(guests);
 
-  const { state, unseated } = greedySeed(guests, tables, constraints, rng);
+  const { state, unseated } = greedySeed(guests, tables, constraints, rng, seatCost);
   const seeded: SeatingArrangement = { tables, assignments: state.assignments };
 
-  const improved = localSearch(seeded, unseated, constraints, guests, rng, maxSwapIterations);
+  const improved = localSearch(seeded, unseated, constraints, guests, rng, maxSwapIterations, seatCost);
 
   return {
     arrangement: improved.arrangement,

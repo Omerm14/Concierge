@@ -1,4 +1,5 @@
 import type { SeatingArrangement } from "../guests/types";
+import type { SeatCost } from "./occupancy";
 
 export type SeatingAction =
   | { type: "assign"; guestId: string; tableId: string }
@@ -15,16 +16,19 @@ export interface SeatingReducerResult {
   rejection?: SeatingRejection;
 }
 
-function seatedCount(
+function seatedSeats(
   arrangement: SeatingArrangement,
   tableId: string,
   excludeGuestId: string,
+  seatCost?: SeatCost,
 ): number {
-  let count = 0;
+  let seats = 0;
   for (const [guestId, assignedTableId] of Object.entries(arrangement.assignments)) {
-    if (assignedTableId === tableId && guestId !== excludeGuestId) count++;
+    if (assignedTableId === tableId && guestId !== excludeGuestId) {
+      seats += seatCost ? seatCost(guestId) : 1;
+    }
   }
-  return count;
+  return seats;
 }
 
 /**
@@ -32,11 +36,14 @@ function seatedCount(
  * both a fresh assign from the unassigned tray and moving an already-seated
  * guest to a different table — both are just overwriting the guestId→tableId
  * entry), unassigns a guest back to the tray, and rejects a drop that would
- * put a table over capacity without mutating the arrangement.
+ * put a table over capacity without mutating the arrangement. `seatCost`
+ * (guestId -> seats, default 1) lets a confirmed plus-one occupy more than
+ * one seat; omit it for the original one-guest-one-seat behavior.
  */
 export function seatingReducer(
   arrangement: SeatingArrangement,
   action: SeatingAction,
+  seatCost?: SeatCost,
 ): SeatingReducerResult {
   if (action.type === "unassign") {
     if (!(action.guestId in arrangement.assignments)) {
@@ -53,7 +60,8 @@ export function seatingReducer(
     return { arrangement };
   }
 
-  if (seatedCount(arrangement, tableId, guestId) >= table.capacity) {
+  const guestSeats = seatCost ? seatCost(guestId) : 1;
+  if (seatedSeats(arrangement, tableId, guestId, seatCost) + guestSeats > table.capacity) {
     return {
       arrangement,
       rejection: { guestId, tableId, reason: "capacity" },
