@@ -1,4 +1,5 @@
 import type { Guest, SeatingArrangement } from "../guests/types";
+import type { SeatCost } from "./occupancy";
 
 export type ConstraintHardness = "hard" | "soft";
 
@@ -136,6 +137,7 @@ function evaluateMustSitAt(
 function evaluateCapacity(
   constraint: CapacityConstraint,
   arrangement: SeatingArrangement,
+  seatCost?: SeatCost,
 ): ConstraintEvaluation {
   const tables = constraint.tableId
     ? arrangement.tables.filter((table) => table.id === constraint.tableId)
@@ -144,7 +146,10 @@ function evaluateCapacity(
   const violatingGuestIds: string[] = [];
   for (const table of tables) {
     const seatedGuestIds = guestIdsAtTable(arrangement, table.id);
-    if (seatedGuestIds.length > table.capacity) {
+    const totalSeats = seatCost
+      ? seatedGuestIds.reduce((sum, guestId) => sum + seatCost(guestId), 0)
+      : seatedGuestIds.length;
+    if (totalSeats > table.capacity) {
       violatingGuestIds.push(...seatedGuestIds);
     }
   }
@@ -200,6 +205,7 @@ export function evaluateConstraints(
   arrangement: SeatingArrangement,
   constraints: Constraint[],
   guests: Guest[],
+  seatCost?: SeatCost,
 ): ConstraintEvaluationResult {
   const guestsById = new Map(guests.map((guest) => [guest.id, guest]));
 
@@ -212,7 +218,7 @@ export function evaluateConstraints(
       case "must-sit-at":
         return evaluateMustSitAt(constraint, arrangement);
       case "capacity":
-        return evaluateCapacity(constraint, arrangement);
+        return evaluateCapacity(constraint, arrangement, seatCost);
       case "same-side-table":
         return evaluateSameSideTable(constraint, arrangement, guestsById);
       default: {
