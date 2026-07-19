@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import { demoArrangement, demoGuests } from "@/lib/fixtures/demo-wedding";
+import { demoArrangement, demoGuests, demoWedding } from "@/lib/fixtures/demo-wedding";
 import { dietaryTotals, headcount, responseBreakdown } from "@/lib/roster/totals";
 import { checkInList, tableLayout } from "@/lib/venue-view/check-in";
+import { VenueViewHeader } from "@/components/venue-view/VenueViewHeader";
 import { HeadcountSummary } from "@/components/venue-view/HeadcountSummary";
 import { DietaryTotals } from "@/components/venue-view/DietaryTotals";
 import { TableLayout } from "@/components/venue-view/TableLayout";
@@ -9,8 +10,8 @@ import { CheckInList } from "@/components/venue-view/CheckInList";
 import { PrintButton } from "@/components/venue-view/PrintButton";
 
 export const metadata: Metadata = {
-  title: "Venue View — Concierge",
-  description: "Read-only headcount, table layout, dietary totals, and check-in list for the venue.",
+  title: `${demoWedding.coupleDisplayName} — Venue View`,
+  description: `Read-only headcount, table layout, dietary totals, and check-in list for ${demoWedding.venueName ?? "the venue"}.`,
 };
 
 // v0 renders the shared mock dataset only — no DB, no fetch, no auth, no
@@ -25,14 +26,11 @@ export default function VenueViewPage() {
 
   return (
     <div className="mx-auto flex min-h-screen max-w-4xl flex-col gap-10 bg-white px-6 py-16 print:gap-6 print:p-0">
-      <div className="flex items-center justify-between print:hidden">
-        <div>
-          <h1 className="text-3xl font-semibold text-black dark:text-zinc-50">Venue View</h1>
-          <p className="mt-2 text-zinc-600 dark:text-zinc-300">
-            Everything the venue needs — read-only, printable.
-          </p>
+      <div className="flex items-center justify-between">
+        <VenueViewHeader wedding={demoWedding} generatedAt={new Date()} />
+        <div className="print:hidden">
+          <PrintButton />
         </div>
-        <PrintButton />
       </div>
 
       <HeadcountSummary
