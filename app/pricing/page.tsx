@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { PricingTier } from "../../components/pricing/PricingTier";
+import { PageViewTracker } from "../../components/analytics/PageViewTracker";
 
 export const metadata: Metadata = {
   title: "Pricing — Concierge",
@@ -19,6 +20,7 @@ const FEATURES = [
 export default function PricingPage() {
   return (
     <div className="flex min-h-screen flex-col items-center gap-10 bg-zinc-50 px-6 py-16 dark:bg-black">
+      <PageViewTracker event="pricing_viewed" />
       <div className="max-w-xl text-center">
         <h1 className="text-3xl font-semibold text-black dark:text-zinc-50">
           Simple, honest pricing

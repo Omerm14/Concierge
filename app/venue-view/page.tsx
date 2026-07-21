@@ -8,6 +8,7 @@ import { DietaryTotals } from "@/components/venue-view/DietaryTotals";
 import { TableLayout } from "@/components/venue-view/TableLayout";
 import { CheckInList } from "@/components/venue-view/CheckInList";
 import { PrintButton } from "@/components/venue-view/PrintButton";
+import { PageViewTracker } from "@/components/analytics/PageViewTracker";
 
 export const metadata: Metadata = {
   title: `${demoWedding.coupleDisplayName} — Venue View`,
@@ -26,6 +27,7 @@ export default function VenueViewPage() {
 
   return (
     <div className="mx-auto flex min-h-screen max-w-4xl flex-col gap-10 bg-white px-6 py-16 print:gap-6 print:p-0">
+      <PageViewTracker event="venue_view_generated" />
       <div className="flex items-center justify-between">
         <VenueViewHeader wedding={demoWedding} generatedAt={new Date()} />
         <div className="print:hidden">

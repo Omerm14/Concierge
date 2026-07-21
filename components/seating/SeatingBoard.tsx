@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { PointerEvent } from "react";
 import type { Constraint } from "@/lib/seating/constraints";
 import type { Guest, SeatingArrangement } from "@/lib/guests/types";
@@ -28,6 +28,10 @@ export function SeatingBoard({
 
   const guestsById = new Map(guests.map((guest) => [guest.id, guest]));
   const unassignedGuests = guests.filter((guest) => !(guest.id in arrangement.assignments));
+
+  useEffect(() => {
+    track("seating_opened", {});
+  }, []);
 
   function handleAutoSeat() {
     const next = proposeAutoSeat(guests, arrangement.tables, constraints, arrangement);
@@ -80,6 +84,8 @@ export function SeatingBoard({
     setArrangement(result.arrangement);
     if (result.rejection) {
       setRejectedGuestName(guestsById.get(guestId)?.fullName ?? "Guest");
+    } else {
+      track("seating_assignment_made", { tableCount: arrangement.tables.length });
     }
   }
 

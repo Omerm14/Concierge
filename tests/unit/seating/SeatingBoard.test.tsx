@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SeatingBoard } from "@/components/seating/SeatingBoard";
 import { resetAnalyticsSink, setAnalyticsSink } from "@/lib/analytics/track";
@@ -78,5 +78,78 @@ describe("<SeatingBoard /> auto-seat", () => {
     expect(screen.queryByTestId("auto-seat-review")).not.toBeInTheDocument();
     expect(screen.getByTestId("unassigned-count")).toHaveTextContent("(5)");
     expect(within(screen.getByTestId("table-t1")).queryByTestId("chip-g1")).toBeInTheDocument();
+  });
+});
+
+describe("<SeatingBoard /> funnel events", () => {
+  beforeEach(() => {
+    // jsdom does not implement the Pointer Events capture API used by the
+    // board's drag handlers.
+    Element.prototype.setPointerCapture = vi.fn();
+    Element.prototype.releasePointerCapture = vi.fn();
+  });
+
+  afterEach(() => {
+    cleanup();
+    resetAnalyticsSink();
+    vi.restoreAllMocks();
+  });
+
+  it("fires seating_opened exactly once on mount", () => {
+    const sink = vi.fn();
+    setAnalyticsSink(sink);
+
+    render(<SeatingBoard guests={guests} initialArrangement={initialArrangement} />);
+
+    expect(sink).toHaveBeenCalledTimes(1);
+    expect(sink).toHaveBeenCalledWith("seating_opened", {});
+  });
+
+  it("fires seating_assignment_made with the board's table count when a guest is dropped onto a table", () => {
+    const sink = vi.fn();
+    render(<SeatingBoard guests={guests} initialArrangement={initialArrangement} />);
+    setAnalyticsSink(sink);
+
+    const chip = screen.getByTestId("chip-g2");
+    const targetTable = screen.getByTestId("table-t2");
+    document.elementFromPoint = vi.fn().mockReturnValue(targetTable);
+
+    fireEvent.pointerDown(chip, { pointerId: 1 });
+    fireEvent.pointerUp(chip, { pointerId: 1, clientX: 1, clientY: 1 });
+
+    expect(sink).toHaveBeenCalledWith("seating_assignment_made", { tableCount: 2 });
+  });
+
+  it("does not fire seating_assignment_made when a guest is dropped onto the unassign tray", () => {
+    const sink = vi.fn();
+    render(<SeatingBoard guests={guests} initialArrangement={initialArrangement} />);
+    setAnalyticsSink(sink);
+
+    const chip = screen.getByTestId("chip-g1");
+    const tray = screen.getByTestId("unassigned-tray");
+    document.elementFromPoint = vi.fn().mockReturnValue(tray);
+
+    fireEvent.pointerDown(chip, { pointerId: 1 });
+    fireEvent.pointerUp(chip, { pointerId: 1, clientX: 1, clientY: 1 });
+
+    expect(sink).not.toHaveBeenCalledWith("seating_assignment_made", expect.anything());
+  });
+
+  it("does not fire seating_assignment_made when a drop is rejected for capacity", () => {
+    const fullTables: Table[] = [{ id: "t1", label: "Table 1", capacity: 1 }];
+    const fullArrangement: SeatingArrangement = { tables: fullTables, assignments: { g1: "t1" } };
+    const sink = vi.fn();
+    render(<SeatingBoard guests={guests} initialArrangement={fullArrangement} />);
+    setAnalyticsSink(sink);
+
+    const chip = screen.getByTestId("chip-g2");
+    const targetTable = screen.getByTestId("table-t1");
+    document.elementFromPoint = vi.fn().mockReturnValue(targetTable);
+
+    fireEvent.pointerDown(chip, { pointerId: 1 });
+    fireEvent.pointerUp(chip, { pointerId: 1, clientX: 1, clientY: 1 });
+
+    expect(screen.getByTestId("rejection-message")).toBeInTheDocument();
+    expect(sink).not.toHaveBeenCalledWith("seating_assignment_made", expect.anything());
   });
 });
