@@ -1,7 +1,17 @@
-import type { Guest } from "@/lib/guests/types";
-import type { TableGroup } from "@/lib/venue-view/check-in";
+import type { RosterGuest, TableGroup } from "@/lib/venue-view/check-in";
 
-export function CheckInList({ byTable, unseated }: { byTable: TableGroup[]; unseated: Guest[] }) {
+function displayName(guest: RosterGuest): string {
+  const plusOnes = guest.plusOnes ?? 0;
+  return plusOnes > 0 ? `${guest.fullName} (+${plusOnes})` : guest.fullName;
+}
+
+export function CheckInList({
+  byTable,
+  unseated,
+}: {
+  byTable: TableGroup[];
+  unseated: RosterGuest[];
+}) {
   return (
     <section aria-labelledby="check-in-heading">
       <h2 id="check-in-heading" className="text-xl font-semibold text-black dark:text-zinc-50 print:text-black">
@@ -15,7 +25,7 @@ export function CheckInList({ byTable, unseated }: { byTable: TableGroup[]; unse
               <h3 className="font-medium text-black dark:text-zinc-50 print:text-black">{table.label}</h3>
               <ul className="mt-1 text-sm text-black dark:text-zinc-50 print:text-black">
                 {guests.map((guest) => (
-                  <li key={guest.id}>{guest.fullName}</li>
+                  <li key={guest.id}>{displayName(guest)}</li>
                 ))}
               </ul>
             </div>
@@ -28,7 +38,7 @@ export function CheckInList({ byTable, unseated }: { byTable: TableGroup[]; unse
             </h3>
             <ul className="mt-1 text-sm text-black dark:text-zinc-50 print:text-black">
               {unseated.map((guest) => (
-                <li key={guest.id}>{guest.fullName}</li>
+                <li key={guest.id}>{displayName(guest)}</li>
               ))}
             </ul>
           </div>
