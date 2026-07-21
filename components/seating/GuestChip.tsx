@@ -3,6 +3,13 @@
 import type { PointerEvent } from "react";
 import type { Guest } from "@/lib/guests/types";
 
+/**
+ * A guest that may have gone through the CON-9 RSVP reducer. Mirrors
+ * lib/roster/totals.ts's RosterGuest — confirmed plus-ones live on
+ * `plusOnes`, never the `plusOnesAllowed` ceiling.
+ */
+type RosterGuest = Guest & { plusOnes?: number };
+
 const DIETARY_LABELS: Record<string, string> = {
   vegetarian: "Veg",
   vegan: "Vegan",
@@ -18,12 +25,13 @@ export function GuestChip({
   onPointerDown,
   onPointerUp,
 }: {
-  guest: Guest;
+  guest: RosterGuest;
   dragging: boolean;
   onPointerDown: (event: PointerEvent<HTMLDivElement>) => void;
   onPointerUp: (event: PointerEvent<HTMLDivElement>) => void;
 }) {
   const dietaryBadges = guest.dietary.filter((tag) => tag !== "none");
+  const plusOnes = guest.plusOnes ?? 0;
 
   return (
     <div
@@ -38,6 +46,14 @@ export function GuestChip({
       }`}
     >
       <span>{guest.fullName}</span>
+      {plusOnes > 0 && (
+        <span
+          data-testid={`plus-ones-badge-${guest.id}`}
+          className="ml-1.5 rounded-full bg-sky-100 px-1.5 py-0.5 text-xs text-sky-900 dark:bg-sky-900 dark:text-sky-100"
+        >
+          +{plusOnes}
+        </span>
+      )}
       {dietaryBadges.map((tag) => (
         <span
           key={tag}
