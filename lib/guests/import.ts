@@ -81,11 +81,16 @@ const LANGUAGE_VALUES: Record<string, Language> = {
 
 type RawRow = Record<string, string>;
 
-function toCanonicalRow(raw: RawRow): RawRow {
+function toCanonicalRow(raw: RawRow, unmappedHeaders: Set<string>): RawRow {
   const canonical: RawRow = {};
   for (const [rawHeader, value] of Object.entries(raw)) {
-    const field = ALIAS_LOOKUP[rawHeader.trim().toLowerCase()];
-    if (field) canonical[field] = value;
+    const trimmedHeader = rawHeader.trim();
+    const field = ALIAS_LOOKUP[trimmedHeader.toLowerCase()];
+    if (field) {
+      canonical[field] = value;
+    } else if (trimmedHeader) {
+      unmappedHeaders.add(trimmedHeader);
+    }
   }
   return canonical;
 }
@@ -118,16 +123,49 @@ function rowToGuest(
     }
   }
 
-  const side = SIDE_VALUES[row.side?.trim().toLowerCase() ?? ""] ?? "other";
+  const rawSide = row.side?.trim();
+  const side = (rawSide && SIDE_VALUES[rawSide.toLowerCase()]) || "other";
+  if (rawSide && !SIDE_VALUES[rawSide.toLowerCase()]) {
+    warnings.push(
+      `Row ${rowNumber}: unrecognized side "${rawSide}", set to "other"`
+    );
+  }
 
+  const droppedDietaryTokens: string[] = [];
   const dietaryTokens = splitList(row.dietary)
-    .map((t) => DIETARY_VALUES[t.toLowerCase()])
+    .map((t) => {
+      const mapped = DIETARY_VALUES[t.toLowerCase()];
+      if (!mapped) droppedDietaryTokens.push(t);
+      return mapped;
+    })
     .filter((d): d is Dietary => Boolean(d));
   const dietary = dietaryTokens.length > 0 ? dietaryTokens : ["none" as const];
+  if (droppedDietaryTokens.length > 0) {
+    const list = droppedDietaryTokens.map((t) => `"${t}"`).join(", ");
+    warnings.push(
+      `Row ${rowNumber}: unrecognized dietary value(s) ${list}, ignored`
+    );
+  }
 
-  const plusOnesAllowed = Number.parseInt(row.plusOnesAllowed ?? "", 10);
+  const rawPlusOnes = row.plusOnesAllowed?.trim();
+  const parsedPlusOnes = Number.parseInt(rawPlusOnes ?? "", 10);
+  const validPlusOnes = Number.isFinite(parsedPlusOnes) && parsedPlusOnes >= 0;
+  const plusOnesAllowed = validPlusOnes ? parsedPlusOnes : 0;
+  if (rawPlusOnes && !validPlusOnes) {
+    warnings.push(
+      `Row ${rowNumber}: invalid plus-ones value "${rawPlusOnes}", set to 0`
+    );
+  }
 
-  const language = LANGUAGE_VALUES[row.language?.trim().toLowerCase() ?? ""];
+  const rawLanguage = row.language?.trim();
+  const language = rawLanguage
+    ? LANGUAGE_VALUES[rawLanguage.toLowerCase()]
+    : undefined;
+  if (rawLanguage && !language) {
+    warnings.push(
+      `Row ${rowNumber}: unrecognized language "${rawLanguage}", ignored`
+    );
+  }
 
   return {
     id: randomUUID(),
@@ -138,7 +176,7 @@ function rowToGuest(
     dietary,
     allergyNote: row.allergyNote?.trim() || undefined,
     rsvpStatus: "pending",
-    plusOnesAllowed: Number.isFinite(plusOnesAllowed) ? plusOnesAllowed : 0,
+    plusOnesAllowed,
     language,
   };
 }
@@ -183,6 +221,7 @@ export async function importGuests(
   kind: ImportFileKind
 ): Promise<ImportResult> {
   const warnings: string[] = [];
+  const unmappedHeaders = new Set<string>();
 
   const rawRows =
     kind === "xlsx"
@@ -191,10 +230,14 @@ export async function importGuests(
 
   const guests: Guest[] = [];
   rawRows.forEach((raw, index) => {
-    const canonical = toCanonicalRow(raw);
+    const canonical = toCanonicalRow(raw, unmappedHeaders);
     const guest = rowToGuest(canonical, index + 2, warnings);
     if (guest) guests.push(guest);
   });
+
+  for (const header of unmappedHeaders) {
+    warnings.push(`Unrecognized column "${header}", ignored`);
+  }
 
   return { guests, warnings };
 }
