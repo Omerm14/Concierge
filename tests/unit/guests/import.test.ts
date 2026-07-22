@@ -66,11 +66,11 @@ describe("importGuests", () => {
     expect(withoutId(xlsxResult.guests)).toEqual(withoutId(csvResult.guests));
   });
 
-  it("tolerantly maps Hebrew headers and ignores an unmapped extra column", async () => {
+  it("tolerantly maps Hebrew headers and warns once about an unmapped extra column", async () => {
     const csv = readFileSync(path.join(fixturesDir, "guests-he.csv"), "utf-8");
     const { guests, warnings } = await importGuests(csv, "csv");
 
-    expect(warnings).toEqual([]);
+    expect(warnings).toEqual([expect.stringContaining("הערות פנימיות")]);
     expect(guests).toHaveLength(2);
     const dana = guests.find((g) => g.fullName === "דנה כהן");
     const yossi = guests.find((g) => g.fullName === "יוסי לוי");
@@ -109,5 +109,70 @@ describe("importGuests", () => {
     expect(guests).toHaveLength(1);
     expect(guests[0]?.phone).toBe("+14155551234");
     expect(warnings).toEqual([]);
+  });
+
+  it("produces zero warnings for a fully clean sheet", async () => {
+    const csv = readFileSync(path.join(fixturesDir, "guests-en.csv"), "utf-8");
+    const { warnings } = await importGuests(csv, "csv");
+
+    expect(warnings).toEqual([]);
+  });
+
+  it("warns once per distinct unmapped header, not once per row", async () => {
+    const csv = "Full Name,Table\nA,1\nB,2\nC,3\n";
+    const { guests, warnings } = await importGuests(csv, "csv");
+
+    expect(guests).toHaveLength(3);
+    expect(warnings).toEqual(['Unrecognized column "Table", ignored']);
+  });
+
+  it("keeps side as \"other\" and warns on an unrecognized side token", async () => {
+    const csv = "Full Name,Side\nA,Work\n";
+    const { guests, warnings } = await importGuests(csv, "csv");
+
+    expect(guests[0]?.side).toBe("other");
+    expect(warnings).toEqual(
+      expect.arrayContaining([expect.stringContaining('"Work"')])
+    );
+  });
+
+  it("drops an unrecognized dietary token but keeps the recognized ones, with a warning", async () => {
+    const csv = 'Full Name,Dietary\nA,"vegetarian, sparkly"\n';
+    const { guests, warnings } = await importGuests(csv, "csv");
+
+    expect(guests[0]?.dietary).toEqual(["vegetarian"]);
+    expect(warnings).toEqual(
+      expect.arrayContaining([expect.stringContaining('"sparkly"')])
+    );
+  });
+
+  it("sets language to undefined and warns on an unrecognized language", async () => {
+    const csv = "Full Name,Language\nA,klingon\n";
+    const { guests, warnings } = await importGuests(csv, "csv");
+
+    expect(guests[0]?.language).toBeUndefined();
+    expect(warnings).toEqual(
+      expect.arrayContaining([expect.stringContaining('"klingon"')])
+    );
+  });
+
+  it("defaults plusOnesAllowed to 0 and warns on a non-numeric value", async () => {
+    const csv = "Full Name,Plus Ones Allowed\nA,two\n";
+    const { guests, warnings } = await importGuests(csv, "csv");
+
+    expect(guests[0]?.plusOnesAllowed).toBe(0);
+    expect(warnings).toEqual(
+      expect.arrayContaining([expect.stringContaining('"two"')])
+    );
+  });
+
+  it("defaults plusOnesAllowed to 0 and warns on a negative value", async () => {
+    const csv = "Full Name,Plus Ones Allowed\nA,-1\n";
+    const { guests, warnings } = await importGuests(csv, "csv");
+
+    expect(guests[0]?.plusOnesAllowed).toBe(0);
+    expect(warnings).toEqual(
+      expect.arrayContaining([expect.stringContaining('"-1"')])
+    );
   });
 });
