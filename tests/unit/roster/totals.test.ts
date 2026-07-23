@@ -103,13 +103,35 @@ describe("headcount", () => {
 });
 
 describe("dietaryTotals", () => {
-  it("sums each dietary tag once per guest, adds confirmed plus-one meals, and collects allergy notes verbatim", () => {
+  it("sums each dietary tag once per confirmed guest, adds confirmed plus-one meals, and collects allergy notes verbatim", () => {
     const result = dietaryTotals(fixedGuests);
     expect(result.counts.allergy).toBe(1);
     expect(result.counts.vegan).toBe(1);
-    // g2, g3, g4 (base "none") + g1 (base "none") + g1's 1 confirmed plus-one.
-    expect(result.counts.none).toBe(5);
+    // g2 (no), g3 (pending), g4 (maybe) are unconfirmed and contribute nothing;
+    // only g1's base "none" tag + g1's 1 confirmed plus-one count here.
+    expect(result.counts.none).toBe(2);
     expect(result.allergyNotes).toEqual([{ fullName: "Guest g5", allergyNote: "Peanut allergy" }]);
+  });
+
+  it("AC1: a guest who is no/pending/maybe contributes 0 to every dietary bucket", () => {
+    const declined = makeGuest({ id: "d1", rsvpStatus: "no", dietary: ["vegan"], allergyNote: "Shellfish" });
+    const pending = makeGuest({ id: "d2", rsvpStatus: "pending", dietary: ["gluten-free"] });
+    const maybe = makeGuest({ id: "d3", rsvpStatus: "maybe", dietary: ["allergy"] });
+    const result = dietaryTotals([declined, pending, maybe]);
+    expect(Object.values(result.counts).reduce((sum, n) => sum + n, 0)).toBe(0);
+    expect(result.allergyNotes).toEqual([]);
+  });
+
+  it("AC2: mains reconcile with headcount.maxAttending for a mixed cohort with declines/pending/maybe", () => {
+    const cohort: TrackedGuest[] = [
+      makeGuest({ id: "mx1", rsvpStatus: "yes", dietary: ["vegan"], plusOnes: 2 }),
+      makeGuest({ id: "mx2", rsvpStatus: "no", dietary: ["gluten-free"] }),
+      makeGuest({ id: "mx3", rsvpStatus: "pending", dietary: ["allergy"] }),
+      makeGuest({ id: "mx4", rsvpStatus: "maybe", dietary: ["kids-meal"] }),
+      makeGuest({ id: "mx5", rsvpStatus: "yes", dietary: ["none"], plusOnes: 0 }),
+    ];
+    const mains = Object.values(dietaryTotals(cohort).counts).reduce((sum, n) => sum + n, 0);
+    expect(mains).toBe(headcount(cohort).maxAttending);
   });
 
   it("a plus-one's meal defaults to the host's single dietary tag when it's trivially derivable", () => {

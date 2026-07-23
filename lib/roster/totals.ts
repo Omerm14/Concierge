@@ -21,6 +21,15 @@ function confirmedPlusOnes(guest: RosterGuest): number {
 }
 
 /**
+ * The single "is this guest actually coming" gate — headcount, dietaryTotals,
+ * and the bySide/byGroup roll-ups all filter through this so the numbers on
+ * one Venue View page can't drift apart again (see CON-26/CON-45/CON-52/CON-61).
+ */
+function isAttending(guest: Pick<RosterGuest, "rsvpStatus">): boolean {
+  return guest.rsvpStatus === "yes";
+}
+
+/**
  * A plus-one has no dietary tag of its own (per-plus-one dietary capture is
  * deferred — see CON-26). Its meal is only "trivially derivable" from the
  * host guest when the host has exactly one dietary tag; a host with zero or
@@ -82,7 +91,7 @@ export function responseBreakdown(guests: Guest[]): ResponseBreakdown {
 }
 
 export function headcount(guests: RosterGuest[]): Headcount {
-  const confirmed = guests.filter((guest) => guest.rsvpStatus === "yes");
+  const confirmed = guests.filter(isAttending);
   const minAttending = confirmed.length;
   const maxAttending =
     minAttending +
@@ -98,6 +107,8 @@ export function dietaryTotals(guests: RosterGuest[]): DietaryTotals {
   const allergyNotes: AllergyNote[] = [];
 
   for (const guest of guests) {
+    if (!isAttending(guest)) continue;
+
     for (const tag of guest.dietary) {
       counts[tag] += 1;
     }
@@ -105,11 +116,9 @@ export function dietaryTotals(guests: RosterGuest[]): DietaryTotals {
       allergyNotes.push({ fullName: guest.fullName, allergyNote: guest.allergyNote });
     }
 
-    if (guest.rsvpStatus === "yes") {
-      const plusOnes = confirmedPlusOnes(guest);
-      if (plusOnes > 0) {
-        counts[primaryDietaryTag(guest) ?? "none"] += plusOnes;
-      }
+    const plusOnes = confirmedPlusOnes(guest);
+    if (plusOnes > 0) {
+      counts[primaryDietaryTag(guest) ?? "none"] += plusOnes;
     }
   }
 
